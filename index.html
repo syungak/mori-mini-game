@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Mini Scroll Action</title>
+  <title>Nature Adventure Scroll</title>
   <style>
     * {
       box-sizing: border-box;
       user-select: none;
       -webkit-user-select: none;
-      touch-action: none; /* Safariの画面揺れ・拡大防止 */
+      touch-action: none; /* iPhone Safariの不要なジェスチャー防止 */
     }
     body {
       margin: 0;
       padding: 0;
-      background-color: #111;
-      font-family: sans-serif;
+      background-color: #0d1b1e;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -27,57 +27,60 @@
     #canvas-container {
       position: relative;
       width: 100vw;
-      max-width: 600px;
+      max-width: 650px;
       height: 60vh;
-      background: #5c94fc;
-      border-bottom: 4px solid #333;
+      background: #7ec0ee;
+      border-bottom: 4px solid #2e4a3d;
     }
     canvas {
       width: 100%;
       height: 100%;
       display: block;
+      image-rendering: pixelated;
     }
-    /* スマホ操作用UI */
+    /* iPhone Safari用操作パネル */
     #ui-container {
       width: 100vw;
-      max-width: 600px;
+      max-width: 650px;
       height: 40vh;
       display: flex;
       justify-content: space-around;
       align-items: center;
-      background: #222;
+      background: #182825;
       padding: 10px;
+      border-top: 2px solid #2d453b;
     }
     .dpad, .actions {
       display: flex;
-      gap: 15px;
+      gap: 14px;
     }
     .btn {
-      width: 65px;
-      height: 65px;
-      background: #444;
-      border: 3px solid #777;
+      width: 66px;
+      height: 66px;
+      background: #2a3d34;
+      border: 3px solid #4d6d5f;
       border-radius: 50%;
-      color: #fff;
+      color: #e0ece4;
       font-weight: bold;
-      font-size: 16px;
+      font-size: 18px;
       display: flex;
       justify-content: center;
       align-items: center;
-      box-shadow: 0 4px #111;
+      box-shadow: 0 4px #0f1a14;
       touch-action: none;
     }
     .btn:active, .btn.active {
-      background: #666;
-      box-shadow: 0 1px #111;
+      background: #3f594d;
+      box-shadow: 0 1px #0f1a14;
       transform: translateY(3px);
     }
     .btn-action {
-      background: #d32f2f;
-      border-color: #ff6659;
+      background: #d84315;
+      border-color: #ff7043;
+      color: #fff;
     }
     .btn-action:active, .btn-action.active {
-      background: #b71c1c;
+      background: #bf360c;
     }
   </style>
 </head>
@@ -87,7 +90,7 @@
   <canvas id="gameCanvas" width="400" height="240"></canvas>
 </div>
 
-<!-- iPhone用タッチコントローラー -->
+<!-- iPhone用タッチボタン -->
 <div id="ui-container">
   <div class="dpad">
     <div class="btn" id="btn-left">◀</div>
@@ -103,52 +106,58 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- ステージ設計（ステージ1〜3） ---
+// --- ステージ設定（1〜3） ---
 const STAGES = {
   1: {
     length: 2400,
-    enemies: [400, 700, 1100, 1500, 1900],
-    goal: 2200
+    enemies: [380, 720, 1100, 1450, 1850],
+    goal: 2200,
+    skyGradient: ['#64b5f6', '#bbdefb'],
+    hillColor: '#66bb6a'
   },
   2: {
-    length: 2800,
-    enemies: [350, 600, 850, 1200, 1500, 1900, 2300],
-    goal: 2600
+    length: 2900,
+    enemies: [320, 600, 850, 1180, 1520, 1850, 2250, 2550],
+    goal: 2700,
+    skyGradient: ['#ffb74d', '#ffe0b2'], // 夕暮れ自然
+    hillColor: '#81c784'
   },
   3: {
-    length: 3200,
-    enemies: [300, 550, 800, 1050, 1300, 1600, 1900, 2200, 2600, 2900],
-    goal: 3000
+    length: 3300,
+    enemies: [300, 520, 780, 1050, 1350, 1680, 1950, 2250, 2550, 2850],
+    goal: 3100,
+    skyGradient: ['#4fc3f7', '#b2ebf2'],
+    hillColor: '#4caf50'
   }
 };
 
 let currentStage = 1;
-const GROUND_Y = 200;
+const GROUND_Y = 190;
 
-// 入力状態
 const keys = { left: false, right: false, down: false, jump: false };
 
-// プレイヤー（マリオ仮）
+// プレイヤー
 const player = {
-  x: 50,
-  y: GROUND_Y - 24,
-  w: 16,
-  h: 24,
+  x: 60,
+  y: GROUND_Y - 32,
+  w: 20,
+  h: 32,
   vx: 0,
   vy: 0,
-  speed: 3,
+  speed: 2.8,
   jumpPower: -7.5,
   isGrounded: false,
-  isCrouching: false
+  isCrouching: false,
+  facing: 1 // 1: 右向き, -1: 左向き
 };
 
-// 敵（ノコノコ仮）
+// 敵（ノコノコ）
 class Koopa {
   constructor(x) {
     this.x = x;
-    this.y = GROUND_Y - 18;
-    this.w = 16;
-    this.h = 18;
+    this.y = GROUND_Y - 22;
+    this.w = 20;
+    this.h = 22;
     this.vx = -1.2;
     this.alive = true;
   }
@@ -158,15 +167,29 @@ class Koopa {
   }
   draw(cameraX) {
     if (!this.alive) return;
-    const screenX = this.x - cameraX;
-    // 画面外はスキップ
-    if (screenX < -20 || screenX > canvas.width + 20) return;
+    const sx = this.x - cameraX;
+    if (sx < -30 || sx > canvas.width + 30) return;
 
-    // ノコノコ描画（緑の甲羅 + 黄色の頭）
-    ctx.fillStyle = '#4CAF50';
-    ctx.fillRect(screenX, this.y + 4, this.w, this.h - 4);
-    ctx.fillStyle = '#FFEB3B';
-    ctx.fillRect(screenX + (this.vx < 0 ? 0 : 8), this.y, 8, 8);
+    // 甲羅（緑と黄色）
+    ctx.fillStyle = '#2e7d32';
+    ctx.beginPath();
+    ctx.roundRect(sx + 2, this.y + 6, 16, 16, 6);
+    ctx.fill();
+
+    // 頭
+    ctx.fillStyle = '#fbc02d';
+    ctx.beginPath();
+    ctx.arc(sx + 3, this.y + 6, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 目
+    ctx.fillStyle = '#000';
+    ctx.fillRect(sx + 2, this.y + 5, 2, 2);
+
+    // 足
+    ctx.fillStyle = '#ffb300';
+    ctx.fillRect(sx + 4, this.y + 19, 4, 3);
+    ctx.fillRect(sx + 12, this.y + 19, 4, 3);
   }
 }
 
@@ -174,27 +197,29 @@ let enemies = [];
 
 function loadStage(stageNum) {
   currentStage = stageNum;
-  player.x = 50;
-  player.y = GROUND_Y - 24;
+  player.x = 60;
+  player.y = GROUND_Y - 32;
   player.vx = 0;
   player.vy = 0;
   player.isCrouching = false;
-  
+  player.h = 32;
+  player.facing = 1;
+
   const stageData = STAGES[stageNum];
   enemies = stageData.enemies.map(x => new Koopa(x));
 }
 
-// --- 入力ハンドラー（iPhoneタッチ対応） ---
+// iPhone Safari向けタッチ入力イベント
 function setupTouch(id, keyName) {
   const el = document.getElementById(id);
-  const handleStart = (e) => { e.preventDefault(); keys[keyName] = true; el.classList.add('active'); };
-  const handleEnd = (e) => { e.preventDefault(); keys[keyName] = false; el.classList.remove('active'); };
+  const start = (e) => { e.preventDefault(); keys[keyName] = true; el.classList.add('active'); };
+  const end = (e) => { e.preventDefault(); keys[keyName] = false; el.classList.remove('active'); };
   
-  el.addEventListener('touchstart', handleStart, { passive: false });
-  el.addEventListener('touchend', handleEnd, { passive: false });
-  el.addEventListener('mousedown', handleStart);
-  el.addEventListener('mouseup', handleEnd);
-  el.addEventListener('mouseleave', handleEnd);
+  el.addEventListener('touchstart', start, { passive: false });
+  el.addEventListener('touchend', end, { passive: false });
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', end);
+  el.addEventListener('mouseleave', end);
 }
 
 setupTouch('btn-left', 'left');
@@ -202,7 +227,7 @@ setupTouch('btn-right', 'right');
 setupTouch('btn-down', 'down');
 setupTouch('btn-jump', 'jump');
 
-// PCのキーボードでも動くようにオマケ
+// PCキーボード操作対応
 window.addEventListener('keydown', (e) => {
   if (e.code === 'ArrowLeft') keys.left = true;
   if (e.code === 'ArrowRight') keys.right = true;
@@ -216,24 +241,30 @@ window.addEventListener('keyup', (e) => {
   if (e.code === 'Space' || e.code === 'ArrowUp') keys.jump = false;
 });
 
-// --- ゲームループ ---
+// --- 更新ループ ---
 function update() {
-  // しゃがみ判定
+  // しゃがみ
   if (keys.down && player.isGrounded) {
     player.isCrouching = true;
-    player.h = 14;
-    player.y = GROUND_Y - 14;
-    player.vx = 0; // しゃがみ中は動けない仕様
+    player.h = 20;
+    player.y = GROUND_Y - 20;
+    player.vx = 0;
   } else {
     if (player.isCrouching) {
-      player.h = 24;
-      player.y = GROUND_Y - 24;
+      player.h = 32;
+      player.y = GROUND_Y - 32;
       player.isCrouching = false;
     }
-    // 横移動
-    if (keys.left) player.vx = -player.speed;
-    else if (keys.right) player.vx = player.speed;
-    else player.vx = 0;
+    // 左右移動
+    if (keys.left) {
+      player.vx = -player.speed;
+      player.facing = -1;
+    } else if (keys.right) {
+      player.vx = player.speed;
+      player.facing = 1;
+    } else {
+      player.vx = 0;
+    }
   }
 
   // ジャンプ
@@ -247,34 +278,32 @@ function update() {
   player.x += player.vx;
   player.y += player.vy;
 
-  // 着地
+  // 地面着地
   if (player.y >= GROUND_Y - player.h) {
     player.y = GROUND_Y - player.h;
     player.vy = 0;
     player.isGrounded = true;
   }
 
-  // ステージ左端ストッパー
   if (player.x < 0) player.x = 0;
 
-  // 敵の更新・当たり判定
+  // 敵との衝突判定
   enemies.forEach(enemy => {
     if (!enemy.alive) return;
     enemy.update();
 
-    // 衝突判定 (AABB)
     if (
       player.x < enemy.x + enemy.w &&
       player.x + player.w > enemy.x &&
       player.y < enemy.y + enemy.h &&
       player.y + player.h > enemy.y
     ) {
-      // 踏みつけ判定（上から落ちてきて、足元が敵の中心より上にある）
-      if (player.vy > 0 && (player.y + player.h - player.vy) <= enemy.y + enemy.h / 2) {
+      // 踏みつけ成功
+      if (player.vy > 0 && (player.y + player.h - player.vy) <= enemy.y + enemy.h / 1.8) {
         enemy.alive = false;
-        player.vy = -5; // ボヨンと跳ねる
+        player.vy = -5.2; // 小ジャンプ
       } else {
-        // ミス -> ステージやり直し
+        // ミス -> やり直し
         loadStage(currentStage);
       }
     }
@@ -284,52 +313,210 @@ function update() {
   const stageData = STAGES[currentStage];
   if (player.x >= stageData.goal) {
     if (currentStage < 3) {
-      alert(`ステージ ${currentStage} クリア！ 次のステージへ進むで！`);
+      alert(`ステージ ${currentStage} クリア！ 自然豊かな次のステージへ進むで！`);
       loadStage(currentStage + 1);
     } else {
-      alert('全ステージ制覇や！おめでとう！最初からループするで。');
+      alert('全ステージ制覇！おめでとう！');
       loadStage(1);
     }
   }
 }
 
-function draw() {
-  // 主人公が「常に画面中央」になるカメラオフセット
-  const cameraX = player.x - (canvas.width / 2) + (player.w / 2);
-
-  // 背景クリア（空色）
-  ctx.fillStyle = '#5c94fc';
+// --- 自然風景の描画 ---
+function drawNaturalBackground(cameraX, stageData) {
+  // 空（グラデーション）
+  const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  grad.addColorStop(0, stageData.skyGradient[0]);
+  grad.addColorStop(1, stageData.skyGradient[1]);
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // 地面
-  ctx.fillStyle = '#c84c0c';
+  // 遠くの山（視差スクロール）
+  ctx.fillStyle = '#81a4cd';
+  for (let i = -1; i < 4; i++) {
+    const mx = (i * 260) - (cameraX * 0.15) % 260;
+    ctx.beginPath();
+    ctx.moveTo(mx, GROUND_Y);
+    ctx.lineTo(mx + 130, GROUND_Y - 80);
+    ctx.lineTo(mx + 260, GROUND_Y);
+    ctx.fill();
+  }
+
+  // なだらかな緑の丘（中景）
+  ctx.fillStyle = stageData.hillColor;
+  for (let i = -1; i < 4; i++) {
+    const hx = (i * 200) - (cameraX * 0.4) % 200;
+    ctx.beginPath();
+    ctx.arc(hx + 100, GROUND_Y + 40, 110, Math.PI, 0);
+    ctx.fill();
+  }
+
+  // 背景の自然樹木
+  for (let i = -1; i < 6; i++) {
+    const tx = (i * 120) - (cameraX * 0.7) % 120;
+    // 幹
+    ctx.fillStyle = '#6d4c41';
+    ctx.fillRect(tx + 16, GROUND_Y - 45, 8, 45);
+    // 葉（丸みのある木の茂み）
+    ctx.fillStyle = '#388e3c';
+    ctx.beginPath();
+    ctx.arc(tx + 20, GROUND_Y - 55, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4caf50';
+    ctx.beginPath();
+    ctx.arc(tx + 17, GROUND_Y - 58, 16, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 大地（土と草の質感）
+  ctx.fillStyle = '#5d4037'; // 豊かな土
   ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
-  ctx.fillStyle = '#00a800';
-  ctx.fillRect(0, GROUND_Y, canvas.width, 3); // 地面の上の緑ライン
 
-  // ゴールポールの描画
+  // 地表の厚みのある芝生
+  ctx.fillStyle = '#2e7d32';
+  ctx.fillRect(0, GROUND_Y, canvas.width, 10);
+  ctx.fillStyle = '#43a047';
+  ctx.fillRect(0, GROUND_Y, canvas.width, 4);
+
+  // 野草・小花の装飾
+  for (let i = 0; i < canvas.width; i += 24) {
+    const flowerX = (i - (cameraX % 24));
+    ctx.fillStyle = (i % 48 === 0) ? '#ffeb3b' : '#ff4081';
+    ctx.fillRect(flowerX, GROUND_Y - 3, 3, 3);
+  }
+}
+
+// --- 人間味のあるマリオの描画 ---
+function drawHumanMario(sx, y, h, isCrouch, facing) {
+  ctx.save();
+  // 向き反転の処理
+  if (facing === -1) {
+    ctx.translate(sx + 10, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-(sx + 10), 0);
+  }
+
+  const skin = '#ffcc80'; // 肌色
+  const red = '#d32f2f';  // 赤シャツ・帽子
+  const blue = '#1565c0'; // 青オーバーオール
+  const brown = '#4e342e';// 髪・ヒゲ・靴
+  const yellow = '#ffeb3b'; // 金ボタン
+
+  if (!isCrouch) {
+    // === 直立 / ジャンプ時 ===
+    // 帽子
+    ctx.fillStyle = red;
+    ctx.fillRect(sx + 2, y, 14, 5);
+    ctx.fillRect(sx + 5, y + 2, 14, 3); // つば
+
+    // 顔・耳
+    ctx.fillStyle = skin;
+    ctx.fillRect(sx + 4, y + 5, 11, 7);
+    ctx.fillRect(sx + 2, y + 7, 3, 3); // 耳
+
+    // 目・モミアゲ
+    ctx.fillStyle = brown;
+    ctx.fillRect(sx + 2, y + 5, 3, 3); // 髪
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(sx + 11, y + 6, 2, 3); // 目
+
+    // 特徴的なヒゲと鼻
+    ctx.fillStyle = skin;
+    ctx.fillRect(sx + 12, y + 7, 4, 3); // 丸い鼻
+    ctx.fillStyle = brown;
+    ctx.fillRect(sx + 8, y + 9, 8, 3);  // 立派なヒゲ
+
+    // 赤シャツ（袖・胸）
+    ctx.fillStyle = red;
+    ctx.fillRect(sx + 1, y + 12, 17, 6);
+
+    // 青いオーバーオール
+    ctx.fillStyle = blue;
+    ctx.fillRect(sx + 4, y + 14, 11, 12);
+    // 肩ひも
+    ctx.fillRect(sx + 4, y + 12, 3, 3);
+    ctx.fillRect(sx + 12, y + 12, 3, 3);
+    // 金ボタン
+    ctx.fillStyle = yellow;
+    ctx.fillRect(sx + 4, y + 15, 2, 2);
+    ctx.fillRect(sx + 13, y + 15, 2, 2);
+
+    // 手袋（白）
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(sx + 1, y + 17, 4, 4);
+
+    // ズボン足部 & 革靴
+    ctx.fillStyle = blue;
+    ctx.fillRect(sx + 4, y + 26, 4, 3);
+    ctx.fillRect(sx + 11, y + 26, 4, 3);
+    ctx.fillStyle = brown;
+    ctx.fillRect(sx + 2, y + 28, 6, 4);
+    ctx.fillRect(sx + 11, y + 28, 6, 4);
+
+  } else {
+    // === しゃがみ時 ===
+    // 帽子
+    ctx.fillStyle = red;
+    ctx.fillRect(sx + 2, y, 14, 4);
+    ctx.fillRect(sx + 5, y + 2, 14, 3);
+
+    // 顔
+    ctx.fillStyle = skin;
+    ctx.fillRect(sx + 4, y + 4, 11, 6);
+    // ヒゲと鼻
+    ctx.fillStyle = skin;
+    ctx.fillRect(sx + 12, y + 5, 4, 3);
+    ctx.fillStyle = brown;
+    ctx.fillRect(sx + 8, y + 7, 8, 3);
+
+    // 縮んだオーバーオール
+    ctx.fillStyle = blue;
+    ctx.fillRect(sx + 3, y + 10, 13, 7);
+    ctx.fillStyle = red;
+    ctx.fillRect(sx + 1, y + 10, 3, 4);
+
+    // 靴
+    ctx.fillStyle = brown;
+    ctx.fillRect(sx + 2, y + 16, 15, 4);
+  }
+
+  ctx.restore();
+}
+
+// --- 描画ループ ---
+function draw() {
+  // 主人公を常に画面中心にするカメラ設定
+  const cameraX = player.x - (canvas.width / 2) + (player.w / 2);
   const stageData = STAGES[currentStage];
-  const goalScreenX = stageData.goal - cameraX;
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(goalScreenX, 50, 4, GROUND_Y - 50);
-  ctx.fillStyle = '#ffeb3b';
-  ctx.fillRect(goalScreenX - 16, 50, 16, 12); // 旗
 
-  // 敵描画
+  // 1. 自然風景背景
+  drawNaturalBackground(cameraX, stageData);
+
+  // 2. ゴールシンボル（木のフラッグポール）
+  const goalScreenX = stageData.goal - cameraX;
+  ctx.fillStyle = '#4e342e';
+  ctx.fillRect(goalScreenX, 40, 5, GROUND_Y - 40);
+  ctx.fillStyle = '#ff3d00';
+  ctx.beginPath();
+  ctx.moveTo(goalScreenX - 18, 45);
+  ctx.lineTo(goalScreenX, 55);
+  ctx.lineTo(goalScreenX, 35);
+  ctx.fill();
+
+  // 3. 敵（ノコノコ）
   enemies.forEach(enemy => enemy.draw(cameraX));
 
-  // 主人公描画（常に画面中央）
+  // 4. マリオ（常に中央）
   const playerScreenX = player.x - cameraX;
-  ctx.fillStyle = '#d32f2f'; // 赤（服）
-  ctx.fillRect(playerScreenX, player.y, player.w, player.h);
-  ctx.fillStyle = '#2196f3'; // 青（オーバーオール仮）
-  ctx.fillRect(playerScreenX + 2, player.y + (player.isCrouching ? 6 : 12), player.w - 4, player.h - (player.isCrouching ? 6 : 12));
+  drawHumanMario(playerScreenX, player.y, player.h, player.isCrouching, player.facing);
 
-  // ステータス表示
-  ctx.fillStyle = '#fff';
-  ctx.font = '10px monospace';
-  ctx.fillText(`STAGE: ${currentStage} / 3`, 10, 15);
-  ctx.fillText(`DIST: ${Math.floor(player.x)}m / ${stageData.goal}m`, 10, 28);
+  // 5. ステータスUI
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(8, 8, 150, 42);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText(`STAGE: ${currentStage} / 3`, 14, 24);
+  ctx.fillText(`PROGRESS: ${Math.floor(player.x)}m / ${stageData.goal}m`, 14, 40);
 }
 
 function loop() {
