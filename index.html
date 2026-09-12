@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Mini Scroll Action</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none; /* Safariの画面揺れ・拡大防止 */
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #111;
+      font-family: sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      height: 100vh;
+      height: 100dvh;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100vw;
+      max-width: 600px;
+      height: 60vh;
+      background: #5c94fc;
+      border-bottom: 4px solid #333;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    /* スマホ操作用UI */
+    #ui-container {
+      width: 100vw;
+      max-width: 600px;
+      height: 40vh;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      background: #222;
+      padding: 10px;
+    }
+    .dpad, .actions {
+      display: flex;
+      gap: 15px;
+    }
+    .btn {
+      width: 65px;
+      height: 65px;
+      background: #444;
+      border: 3px solid #777;
+      border-radius: 50%;
+      color: #fff;
+      font-weight: bold;
+      font-size: 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 4px #111;
+      touch-action: none;
+    }
+    .btn:active, .btn.active {
+      background: #666;
+      box-shadow: 0 1px #111;
+      transform: translateY(3px);
+    }
+    .btn-action {
+      background: #d32f2f;
+      border-color: #ff6659;
+    }
+    .btn-action:active, .btn-action.active {
+      background: #b71c1c;
+    }
+  </style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <canvas id="gameCanvas" width="400" height="240"></canvas>
+</div>
+
+<!-- iPhone用タッチコントローラー -->
+<div id="ui-container">
+  <div class="dpad">
+    <div class="btn" id="btn-left">◀</div>
+    <div class="btn" id="btn-down">▼</div>
+    <div class="btn" id="btn-right">▶</div>
+  </div>
+  <div class="actions">
+    <div class="btn btn-action" id="btn-jump">JUMP</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- ステージ設計（ステージ1〜3） ---
+const STAGES = {
+  1: {
+    length: 2400,
+    enemies: [400, 700, 1100, 1500, 1900],
+    goal: 2200
+  },
+  2: {
+    length: 2800,
+    enemies: [350, 600, 850, 1200, 1500, 1900, 2300],
+    goal: 2600
+  },
+  3: {
+    length: 3200,
+    enemies: [300, 550, 800, 1050, 1300, 1600, 1900, 2200, 2600, 2900],
+    goal: 3000
+  }
+};
+
+let currentStage = 1;
+const GROUND_Y = 200;
+
+// 入力状態
+const keys = { left: false, right: false, down: false, jump: false };
+
+// プレイヤー（マリオ仮）
+const player = {
+  x: 50,
+  y: GROUND_Y - 24,
+  w: 16,
+  h: 24,
+  vx: 0,
+  vy: 0,
+  speed: 3,
+  jumpPower: -7.5,
+  isGrounded: false,
+  isCrouching: false
+};
+
+// 敵（ノコノコ仮）
+class Koopa {
+  constructor(x) {
+    this.x = x;
+    this.y = GROUND_Y - 18;
+    this.w = 16;
+    this.h = 18;
+    this.vx = -1.2;
+    this.alive = true;
+  }
+  update() {
+    if (!this.alive) return;
+    this.x += this.vx;
+  }
+  draw(cameraX) {
+    if (!this.alive) return;
+    const screenX = this.x - cameraX;
+    // 画面外はスキップ
+    if (screenX < -20 || screenX > canvas.width + 20) return;
+
+    // ノコノコ描画（緑の甲羅 + 黄色の頭）
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillRect(screenX, this.y + 4, this.w, this.h - 4);
+    ctx.fillStyle = '#FFEB3B';
+    ctx.fillRect(screenX + (this.vx < 0 ? 0 : 8), this.y, 8, 8);
+  }
+}
+
+let enemies = [];
+
+function loadStage(stageNum) {
+  currentStage = stageNum;
+  player.x = 50;
+  player.y = GROUND_Y - 24;
+  player.vx = 0;
+  player.vy = 0;
+  player.isCrouching = false;
+  
+  const stageData = STAGES[stageNum];
+  enemies = stageData.enemies.map(x => new Koopa(x));
+}
+
+// --- 入力ハンドラー（iPhoneタッチ対応） ---
+function setupTouch(id, keyName) {
+  const el = document.getElementById(id);
+  const handleStart = (e) => { e.preventDefault(); keys[keyName] = true; el.classList.add('active'); };
+  const handleEnd = (e) => { e.preventDefault(); keys[keyName] = false; el.classList.remove('active'); };
+  
+  el.addEventListener('touchstart', handleStart, { passive: false });
+  el.addEventListener('touchend', handleEnd, { passive: false });
+  el.addEventListener('mousedown', handleStart);
+  el.addEventListener('mouseup', handleEnd);
+  el.addEventListener('mouseleave', handleEnd);
+}
+
+setupTouch('btn-left', 'left');
+setupTouch('btn-right', 'right');
+setupTouch('btn-down', 'down');
+setupTouch('btn-jump', 'jump');
+
+// PCのキーボードでも動くようにオマケ
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'ArrowLeft') keys.left = true;
+  if (e.code === 'ArrowRight') keys.right = true;
+  if (e.code === 'ArrowDown') keys.down = true;
+  if (e.code === 'Space' || e.code === 'ArrowUp') keys.jump = true;
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'ArrowLeft') keys.left = false;
+  if (e.code === 'ArrowRight') keys.right = false;
+  if (e.code === 'ArrowDown') keys.down = false;
+  if (e.code === 'Space' || e.code === 'ArrowUp') keys.jump = false;
+});
+
+// --- ゲームループ ---
+function update() {
+  // しゃがみ判定
+  if (keys.down && player.isGrounded) {
+    player.isCrouching = true;
+    player.h = 14;
+    player.y = GROUND_Y - 14;
+    player.vx = 0; // しゃがみ中は動けない仕様
+  } else {
+    if (player.isCrouching) {
+      player.h = 24;
+      player.y = GROUND_Y - 24;
+      player.isCrouching = false;
+    }
+    // 横移動
+    if (keys.left) player.vx = -player.speed;
+    else if (keys.right) player.vx = player.speed;
+    else player.vx = 0;
+  }
+
+  // ジャンプ
+  if (keys.jump && player.isGrounded && !player.isCrouching) {
+    player.vy = player.jumpPower;
+    player.isGrounded = false;
+  }
+
+  // 重力
+  player.vy += 0.35;
+  player.x += player.vx;
+  player.y += player.vy;
+
+  // 着地
+  if (player.y >= GROUND_Y - player.h) {
+    player.y = GROUND_Y - player.h;
+    player.vy = 0;
+    player.isGrounded = true;
+  }
+
+  // ステージ左端ストッパー
+  if (player.x < 0) player.x = 0;
+
+  // 敵の更新・当たり判定
+  enemies.forEach(enemy => {
+    if (!enemy.alive) return;
+    enemy.update();
+
+    // 衝突判定 (AABB)
+    if (
+      player.x < enemy.x + enemy.w &&
+      player.x + player.w > enemy.x &&
+      player.y < enemy.y + enemy.h &&
+      player.y + player.h > enemy.y
+    ) {
+      // 踏みつけ判定（上から落ちてきて、足元が敵の中心より上にある）
+      if (player.vy > 0 && (player.y + player.h - player.vy) <= enemy.y + enemy.h / 2) {
+        enemy.alive = false;
+        player.vy = -5; // ボヨンと跳ねる
+      } else {
+        // ミス -> ステージやり直し
+        loadStage(currentStage);
+      }
+    }
+  });
+
+  // ゴール判定
+  const stageData = STAGES[currentStage];
+  if (player.x >= stageData.goal) {
+    if (currentStage < 3) {
+      alert(`ステージ ${currentStage} クリア！ 次のステージへ進むで！`);
+      loadStage(currentStage + 1);
+    } else {
+      alert('全ステージ制覇や！おめでとう！最初からループするで。');
+      loadStage(1);
+    }
+  }
+}
+
+function draw() {
+  // 主人公が「常に画面中央」になるカメラオフセット
+  const cameraX = player.x - (canvas.width / 2) + (player.w / 2);
+
+  // 背景クリア（空色）
+  ctx.fillStyle = '#5c94fc';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 地面
+  ctx.fillStyle = '#c84c0c';
+  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+  ctx.fillStyle = '#00a800';
+  ctx.fillRect(0, GROUND_Y, canvas.width, 3); // 地面の上の緑ライン
+
+  // ゴールポールの描画
+  const stageData = STAGES[currentStage];
+  const goalScreenX = stageData.goal - cameraX;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(goalScreenX, 50, 4, GROUND_Y - 50);
+  ctx.fillStyle = '#ffeb3b';
+  ctx.fillRect(goalScreenX - 16, 50, 16, 12); // 旗
+
+  // 敵描画
+  enemies.forEach(enemy => enemy.draw(cameraX));
+
+  // 主人公描画（常に画面中央）
+  const playerScreenX = player.x - cameraX;
+  ctx.fillStyle = '#d32f2f'; // 赤（服）
+  ctx.fillRect(playerScreenX, player.y, player.w, player.h);
+  ctx.fillStyle = '#2196f3'; // 青（オーバーオール仮）
+  ctx.fillRect(playerScreenX + 2, player.y + (player.isCrouching ? 6 : 12), player.w - 4, player.h - (player.isCrouching ? 6 : 12));
+
+  // ステータス表示
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px monospace';
+  ctx.fillText(`STAGE: ${currentStage} / 3`, 10, 15);
+  ctx.fillText(`DIST: ${Math.floor(player.x)}m / ${stageData.goal}m`, 10, 28);
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// 開始
+loadStage(1);
+loop();
+</script>
+</body>
+</html>
